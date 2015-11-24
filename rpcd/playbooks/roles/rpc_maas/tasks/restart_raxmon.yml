@@ -13,24 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-- include: repo_setup.yml
-
-- include: package_install.yml
-
-- include: raxmon_cli_config.yml
-
-- include: raxmon_agent_install.yml
-  vars:
-    entity_name: "{{ inventory_hostname }}{{ maas_fqdn_extension }}"
-
-- include: network.yml
-
-- include: cdm.yml
-
-- include: dell.yml
-  when: >
-    dell_check == true
-
-- include: hp.yml
-  when: >
-    hp_check == true
+- name: Restart rackspace-monitoring-agent service
+  service:
+    name: rackspace-monitoring-agent
+    state: restarted
+  delegate_to: "{{ physical_host }}"
+  tags:
+    - maas-setup
+    - rackspace-monitoring-agent-setup
+    - rackspace-monitoring-agent-restart

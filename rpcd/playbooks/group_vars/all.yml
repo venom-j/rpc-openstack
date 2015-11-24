@@ -16,9 +16,12 @@
 rpc_repo_path: /opt/rpc-openstack/openstack-ansible
 
 # rpc-openstack version
-rpc_release: master
+rpc_release: r11.1.0rc5
 
 # Definitions for the repo server, these should match your openstack-ansible
 # deployment
 repo_server_port: 8181
 openstack_repo_url: "http://{{ internal_lb_vip_address }}:{{ repo_server_port }}"
+
+# Location to store a catalog of migrations completed
+migrations_dir: /etc/openstack_deploy/migrations
