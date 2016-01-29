@@ -14,6 +14,9 @@
 # limitations under the License.
 #
 # (c) 2014, Kevin Carter <kevin.carter@rackspace.com>
+# Fork by David Pham <david.pham@rackspace.com>
+# Yet again, completely buchered by Jonathan <jonathan.almaleh@rackspace.com>
+
 import argparse
 import json
 import os
@@ -51,19 +54,19 @@ MONITORS = [
     r' defaults-from http destination *:8775 recv "200 OK" send "HEAD /'
     r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }',
     r'create ltm monitor http /' + PART + '/' + PREFIX_NAME + '_MON_HTTP_HORIZON { defaults-from http'
-    r' destination *:80 recv "302 Found" send "HEAD / HTTP/1.1\r\nHost:'
+    r' destination *:80 recv "302 Found" send "HEAD /auth/login/ HTTP/1.1\r\nHost:'
     r' rpc\r\n\r\n" }',
     r'create ltm monitor http /' + PART + '/' + PREFIX_NAME + '_MON_HTTP_NOVA_SPICE_CONSOLE {'
-    r' defaults-from http destination *:6082 recv "200 OK" send "HEAD /'
+    r' defaults-from http destination *:6082 recv "200 OK" send "HEAD /spice_auto.html'
     r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }',
     r'create ltm monitor https /' + PART + '/' + PREFIX_NAME + '_MON_HTTPS_HORIZON_SSL { defaults-from'
-    r' https destination *:443 recv "302 FOUND" send "HEAD / HTTP/1.1\r\nHost:'
+    r' https destination *:443 recv "200 OK" send "HEAD /auth/login/ HTTP/1.1\r\nHost:'
     r' rpc\r\n\r\n" }',
     r'create ltm monitor https /' + PART + '/' + PREFIX_NAME + '_MON_HTTPS_NOVA_SPICE_CONSOLE {'
     r' defaults-from https destination *:6082 recv "200 OK" send "HEAD /'
     r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }',
-    r'create ltm monitor tcp /' + PART + '/' + PREFIX_NAME + '_MON_TCP_NOVA_API_EC2 { defaults-from tcp'
-    r' destination *:8773 }',
+#    r'create ltm monitor tcp /' + PART + '/' + PREFIX_NAME + '_MON_TCP_NOVA_API_EC2 { defaults-from tcp'
+#    r' destination *:8773 }',
     r'create ltm monitor tcp /' + PART + '/' + PREFIX_NAME + '_MON_TCP_HEAT_API_CFN { defaults-from tcp'
     r' destination *:8000 }',
     r'create ltm monitor tcp /' + PART + '/' + PREFIX_NAME + '_MON_TCP_HEAT_API_CLOUDWATCH {'
@@ -88,7 +91,7 @@ PRIORITY_ENTRY = '{ priority-group %(priority_int)s }'
 
 POOL_NODE = {
     'beginning': 'create ltm pool /' + PART + '/%(pool_name)s {'
-                 ' load-balancing-mode fastest-node members replace-all-with'
+                 ' load-balancing-mode least-connections-node members replace-all-with'
                  ' { %(nodes)s }',
     'priority': 'min-active-members 1',
     'end': 'monitor %(mon_type)s }'
@@ -122,7 +125,7 @@ PUB_SSL_VIRTUAL_ENTRIES = (
     'create ltm virtual /' + PART + '/%(vs_name)s {'
     ' destination %(ssl_public_ip)s:%(port)s ip-protocol tcp'
     ' pool /' + PART + '/%(pool_name)s'
-    r' profiles replace-all-with { /Common/tcp { } %(ssl_profiles)s }'
+    r' profiles replace-all-with { /Common/tcp { } %(ltm_profiles)s }'
     ' %(persist)s'
     ' source-address-translation { pool /' + PART + '/' + PREFIX_NAME + '_SNATPOOL type snat }'
     ' }'
@@ -173,6 +176,7 @@ POOL_PARTS = {
         'mon_type': '/' + PART + '/RPC-MON-EXT-ENDPOINT',
         'group': 'glance_api',
         'make_public': True,
+        'x-forwarded-proto': True,
         'hosts': []
     },
     'glance_registry': {
@@ -188,6 +192,7 @@ POOL_PARTS = {
         'mon_type': '/' + PART + '/' + PREFIX_NAME + '_MON_TCP_HEAT_API_CFN',
         'group': 'heat_api_cfn',
         'make_public': True,
+        'x-forwarded-proto': True,
         'hosts': []
     },
     'heat_api_cloudwatch': {
@@ -196,6 +201,7 @@ POOL_PARTS = {
         'mon_type': '/' + PART + '/' + PREFIX_NAME + '_MON_TCP_HEAT_API_CLOUDWATCH',
         'group': 'heat_api_cloudwatch',
         'make_public': True,
+        'x-forwarded-proto': True,
         'hosts': []
     },
     'heat_api': {
@@ -204,6 +210,7 @@ POOL_PARTS = {
         'mon_type': '/' + PART + '/RPC-MON-EXT-ENDPOINT',
         'group': 'heat_api',
         'make_public': True,
+        'x-forwarded-proto': True,
         'hosts': []
     },
     'keystone_admin': {
@@ -219,6 +226,7 @@ POOL_PARTS = {
         'mon_type': '/' + PART + '/RPC-MON-EXT-ENDPOINT',
         'group': 'keystone',
         'make_public': True,
+        'x-forwarded-proto': True,
         'hosts': []
     },
     'neutron_server': {
@@ -227,16 +235,17 @@ POOL_PARTS = {
         'mon_type': '/' + PART + '/RPC-MON-EXT-ENDPOINT',
         'group': 'neutron_server',
         'make_public': True,
+        'x-forwarded-proto': True,
         'hosts': []
     },
-    'nova_api_ec2': {
-        'port': 8773,
-        'backend_port': 8773,
-        'mon_type': '/' + PART + '/' + PREFIX_NAME + '_MON_TCP_NOVA_API_EC2',
-        'group': 'nova_api_os_compute',
-        'make_public': True,
-        'hosts': []
-    },
+#    'nova_api_ec2': {
+#        'port': 8773,
+#        'backend_port': 8773,
+#        'mon_type': '/' + PART + '/' + PREFIX_NAME + '_MON_TCP_NOVA_API_EC2',
+#        'group': 'nova_api_os_compute',
+#        'make_public': True,
+#        'hosts': []
+#    },
     'nova_api_metadata': {
         'port': 8775,
         'backend_port': 8775,
@@ -250,13 +259,14 @@ POOL_PARTS = {
         'mon_type': '/' + PART + '/RPC-MON-EXT-ENDPOINT',
         'group': 'nova_api_os_compute',
         'make_public': True,
+        'x-forwarded-proto': True,
         'hosts': []
     },
-    'nova_console': {
+    'nova_spice_console': {
         'port': 6082,
         'backend_port': 6082,
         'mon_type': '/' + PART + '/' + PREFIX_NAME + '_MON_HTTP_NOVA_SPICE_CONSOLE',
-        'group': 'nova_console',
+        'group': 'nova_spice_console',
         'hosts': [],
         'ssl_impossible': True,
         'make_public': True,
@@ -268,6 +278,7 @@ POOL_PARTS = {
         'mon_type': '/' + PART + '/RPC-MON-EXT-ENDPOINT',
         'group': 'cinder_api',
         'make_public': True,
+        'x-forwarded-proto': True,
         'hosts': []
     },
     'horizon': {
@@ -319,6 +330,7 @@ POOL_PARTS = {
         'mon_type': '/' + PART + '/RPC-MON-EXT-ENDPOINT',
         'group': 'swift_proxy',
         'make_public': True,
+        'x-forwarded-proto': True,
         'hosts': []
     },
     'repo': {
@@ -330,6 +342,19 @@ POOL_PARTS = {
         'hosts': []
     }
 }
+
+
+HTTP_REQUEST_IRULE = ('create ltm rule RPC_%(name)s \n'
+                      'when HTTP_REQUEST { %(rule)s }')
+
+HTTP_REQUEST_RULES = [
+    {'name': 'x_forwarded_host',
+     'rule': 'HTTP::header insert X-Forwarded-Host [HTTP::host]'},
+    {'name': 'x_forwarded_proto',
+     'rule': 'HTTP::header insert X-Forwarded-Proto "https"'},
+    {'name': 'x_forwarded_for',
+     'rule': 'HTTP::header insert X-Forwarded-For [IP::client_addr]'}
+]
 
 
 def recursive_host_get(inventory, group_name, host_dict=None):
@@ -544,11 +569,16 @@ def main():
         'create ltm rule /' + PART + '/' + PREFIX_NAME + '_DISCARD_ALL',
         '   --> Copy and Paste the following between pre-included curly brackets <--',
         'when CLIENT_ACCEPTED { discard }\n',
+        '### CREATE HTTP PROFILE ###',
+        'create ltm profile http /' + PART + '/' + PREFIX_NAME + '_X-FORWARDED-PROTO { header-insert "X-Forwarded-Proto: https" }\n',
         '### CREATE EXTERNAL MONITOR ###',
         '   --> Upload External monitor file to disk <--',
         '       run util bash',
-        '       cd /config/monitors/',
-        '       vi RPC-MON-EXT-ENDPOINT.monitor',
+        '       curl -k -o /config/monitors/RPC-MON-EXT-ENDPOINT.monitor https://raw.githubusercontent.com/dpham-rs/rpc-openstack/kilo/scripts/f5-monitor.sh',
+
+
+        '       exit',
+
         '   --> Copy and Paste the External monitor into vi <--',
         '       create sys file external-monitor /' + PART + '/RPC-MON-EXT-ENDPOINT { source-path file:///config/monitors/RPC-MON-EXT-ENDPOINT.monitor }',
         '       save sys config',
@@ -558,12 +588,10 @@ def main():
         commands.extend([
             '### UPLOAD SSL CERT KEY PAIR  ###',
             'cd /RPC',
-            'install sys crypto cert /' + PART + '/%(ssl_domain_name)s.crt from-editor'
+            'create sys crypto key /' + PART + '/%(ssl_domain_name)s.key'
             % user_args,
-            '   --> Copy and Paste provided domain cert for public api endpoint <--',
-            'install sys crypto key /' + PART + '/%(ssl_domain_name)s.key from-editor'
+            'create sys crypto cert /' + PART + '/%(ssl_domain_name)s.crt key /' % user_args + PART + '/%(ssl_domain_name)s.key common-name %(ssl_domain_name)s lifetime 3650'
             % user_args,
-            '   --> Copy and Paste provided domain key for public api endpoint <--',
             'cd /Common\n',
             '### CREATE SSL PROFILES ###',
             ('create ltm profile client-ssl'
@@ -631,11 +659,13 @@ def main():
                 virts.append(virt)
             if user_args['ssl_public_ip']:
                 if not value.get('backend_ssl'):
-                    virtual_dict['ssl_profiles'] = (
+                    virtual_dict['ltm_profiles'] = (
                         '/' + PART + '/' + PREFIX_NAME + '_PROF_SSL_%(ssl_domain_name)s { context clientside }'
                     ) % user_args
+                    if value.get ('x-forwarded-proto'):
+                        virtual_dict['ltm_profiles'] = '/' + PART + '/' + PREFIX_NAME + '_X-FORWARDED-PROTO { }/' + PART + '/' + PREFIX_NAME + '_PROF_SSL_%(ssl_domain_name)s { context clientside }'% user_args
                 else:
-                    virtual_dict['ssl_profiles'] = '/' + PART + '/' + PREFIX_NAME + '_PROF_SSL_SERVER { context serverside } /' + PART + '/' + PREFIX_NAME + '_PROF_SSL_%(ssl_domain_name)s { context clientside }'% user_args
+                    virtual_dict['ltm_profiles'] = '/' + PART + '/' + PREFIX_NAME + '_PROF_SSL_SERVER { context serverside } /' + PART + '/' + PREFIX_NAME + '_PROF_SSL_%(ssl_domain_name)s { context clientside }'% user_args
                 if value.get('make_public'):
                     if value.get ('ssl_impossible'):
                         virtual_dict['vs_name'] = '%s_VS_%s' % (
@@ -736,6 +766,12 @@ def main():
                 'sec_container_netmask': netmask
             }
         )
+
+    # define HTTP request irules for proxy server
+    script.append('\n### CREATE PROXY SERVER REQUEST RULES ###')
+    for irule in HTTP_REQUEST_RULES:
+        script.append(HTTP_REQUEST_IRULE % irule)
+    script.append('\n')
 
     script.extend(['%s\n' % i for i in END_COMMANDS])
 
