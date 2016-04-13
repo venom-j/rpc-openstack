@@ -482,7 +482,7 @@ def args():
     parser.add_argument(
         '--sec-host-network',
         help='Security host network address and netmask.'
-             ' EXAMPLE: "192.168.1.1:255.255.255.0"',
+             ' EXAMPLE: "192.168.1.1/24"',
         required=False,
         default=None
     )
@@ -490,15 +490,15 @@ def args():
     parser.add_argument(
         '--sec-container-network',
         help='Security container network address and netmask.'
-             ' EXAMPLE: "192.168.1.1:255.255.255.0"',
+             ' EXAMPLE: "192.168.1.1/24"',
         required=False,
         default=None
     )
 
     parser.add_argument(
         '--sec-public-vlan-name',
-        help='Security container network address and netmask.'
-             ' EXAMPLE: "192.168.1.1:255.255.255.0"',
+        help='F5 egress VLAN name.'
+             ' EXAMPLE: "FW-LB"',
         required=False,
         default=None
     )
@@ -747,23 +747,23 @@ def main():
     script.extend(pubvirts)
 
     if user_args['sec_host_network']:
-        hostnet, netmask = user_args['sec_host_network'].split(':')
+        hostnet = netaddr.IPNetwork(user_args['sec_host_network'])
         if not user_args['sec_public_vlan_name']:
             raise SystemExit('Please set the [ --sec-public-vlan-name ] value')
         script.append(
             SEC_HOSTNET_VIRTUAL_ENTRIES % {
-                'sec_host_net': hostnet,
-                'sec_host_netmask': netmask,
+                'sec_host_net': str(hostnet.ip),
+                'sec_host_netmask': str(hostnet.netmask),
                 'sec_public_vlan_name': user_args['sec_public_vlan_name']
             }
         )
 
     if user_args['sec_container_network']:
-        hostnet, netmask = user_args['sec_container_network'].split(':')
+        containernet = netaddr.IPNetwork(user_args['sec_container_network'])
         script.append(
             SEC_CONTAINER_VIRTUAL_ENTRIES % {
-                'sec_container_net': hostnet,
-                'sec_container_netmask': netmask
+                'sec_container_net': str(containernet.ip),
+                'sec_container_netmask': str(containernet.netmask)
             }
         )
 
