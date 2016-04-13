@@ -754,6 +754,7 @@ def main():
             SEC_HOSTNET_VIRTUAL_ENTRIES % {
                 'sec_host_net': str(hostnet.ip),
                 'sec_host_netmask': str(hostnet.netmask),
+                'sec_host_cidr': str(hostnet.prefixlen),
                 'sec_public_vlan_name': user_args['sec_public_vlan_name']
             }
         )
@@ -764,6 +765,7 @@ def main():
             SEC_CONTAINER_VIRTUAL_ENTRIES % {
                 'sec_container_net': str(containernet.ip),
                 'sec_container_netmask': str(containernet.netmask)
+                'sec_container_cidr': str(containernet.prefixlen)
             }
         )
 
