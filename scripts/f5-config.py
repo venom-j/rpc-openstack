@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
+
 # (c) 2014, Kevin Carter <kevin.carter@rackspace.com>
 # Fork by David Pham <david.pham@rackspace.com>
 # Yet again, completely buchered by Jonathan <jonathan.almaleh@rackspace.com>
@@ -20,9 +20,7 @@
 import argparse
 import json
 import os
-
 import netaddr
-
 
 PART = 'RPC'
 PREFIX_NAME = 'RPC'
@@ -65,8 +63,6 @@ MONITORS = [
     r'create ltm monitor https /' + PART + '/' + PREFIX_NAME + '_MON_HTTPS_NOVA_SPICE_CONSOLE {'
     r' defaults-from https destination *:6082 recv "200 OK" send "HEAD /'
     r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }',
-#    r'create ltm monitor tcp /' + PART + '/' + PREFIX_NAME + '_MON_TCP_NOVA_API_EC2 { defaults-from tcp'
-#    r' destination *:8773 }',
     r'create ltm monitor tcp /' + PART + '/' + PREFIX_NAME + '_MON_TCP_HEAT_API_CFN { defaults-from tcp'
     r' destination *:8000 }',
     r'create ltm monitor tcp /' + PART + '/' + PREFIX_NAME + '_MON_TCP_HEAT_API_CLOUDWATCH {'
@@ -149,6 +145,42 @@ SEC_HOSTNET_VIRTUAL_ENTRIES = (
     ' translate-address disabled translate-port disabled vlans'
     ' replace-all-with { /Common/%(sec_public_vlan_name)s }'
     ' }'
+)
+
+SEC_AFM_RULES = (
+    '\n### CREATE AFM LIST AND RULES ###\n'
+    #Port Lists
+    'create security firewall port-list RPC_VIP_PORTS '
+    '{ ports add { 80 { } 443 { } 3306 { } 5000 { } 6082 { } 8000 { } 8003 { } 8004 { } 8181 { } 8443 '
+    '{ } 8775 { } 8776 { } 8888 { } 9191 { } 9200 { } 9292 { } 9696 { } 35357 { } } }\n'
+    '\n'
+    #Addr Lists
+    'create security firewall address-list RPC_PUB_VIP_ALLOW_IPS { addresses add { 0.0.0.0/0 } }\n'
+    'create security firewall address-list RPC_PRI_VIP_ALLOW_IPS { addresses add { 0.0.0.0/0 } }\n'
+    'create security firewall address-list RPC-HOST-NET { addresses replace-all-with { %(sec_host_net)s { } } }\n'
+    '\n'
+    #Rule Lists
+    'create security firewall rule-list RPC_PUB_VIP_RULELIST '
+    '{ rules replace-all-with { RPC_PUB_VIP_ALLOW { action accept-decisively '
+    'ip-protocol tcp source { address-lists replace-all-with { RPC_PUB_VIP_ALLOW_IPS } } '
+    'destination { addresses replace-all-with { %(ssl_public_ip)s { } } '
+    'port-lists replace-all-with { RPC_VIP_PORTS } } } } }\n'
+    #
+    'create security firewall rule-list RPC_PRI_VIP_RULELIST '
+    '{ rules replace-all-with { RPC_PRI_VIP_ALLOW { action accept-decisively '
+    'ip-protocol tcp source { address-lists replace-all-with { RPC_PRI_VIP_ALLOW_IPS } } '
+    'destination { addresses replace-all-with { %(private_ip)s { } } '
+    'port-lists replace-all-with { RPC_VIP_PORTS } } } } }\n'
+    #
+    'create security firewall rule-list RPC_SECURITY_RULES '
+    'rules add { RPC_PROTECT_HOST { action drop '
+    'source { vlans add { RPC_GATEWAY_NET } } '
+    'destination  { address-lists replace-all-with { RPC-HOST-NET } } place-before first } }\n'
+    '\n'
+    #Apply to Global Policy
+    'modify security firewall policy GLOBAL-POLICY rules add { RPC_PUB_VIP_RULE { rule-list RPC_PUB_VIP_RULELIST place-after RACKNEST } }\n'
+    'modify security firewall policy GLOBAL-POLICY rules add { RPC_PRI_VIP_RULE { rule-list RPC_PRI_VIP_RULELIST place-after RACKNEST } }\n'
+    'modify security firewall policy GLOBAL-POLICY rules add { RPC_SECURITY { place-after ICMP-ALLOW rule-list RPC_SECURITY_RULES } }\n'
 )
 
 SEC_CONTAINER_VIRTUAL_ENTRIES = (
@@ -238,14 +270,6 @@ POOL_PARTS = {
         'x-forwarded-proto': True,
         'hosts': []
     },
-#    'nova_api_ec2': {
-#        'port': 8773,
-#        'backend_port': 8773,
-#        'mon_type': '/' + PART + '/' + PREFIX_NAME + '_MON_TCP_NOVA_API_EC2',
-#        'group': 'nova_api_os_compute',
-#        'make_public': True,
-#        'hosts': []
-#    },
     'nova_api_metadata': {
         'port': 8775,
         'backend_port': 8775,
@@ -342,20 +366,6 @@ POOL_PARTS = {
         'hosts': []
     }
 }
-
-
-HTTP_REQUEST_IRULE = ('create ltm rule RPC_%(name)s \n'
-                      'when HTTP_REQUEST { %(rule)s }')
-
-HTTP_REQUEST_RULES = [
-    {'name': 'x_forwarded_host',
-     'rule': 'HTTP::header insert X-Forwarded-Host [HTTP::host]'},
-    {'name': 'x_forwarded_proto',
-     'rule': 'HTTP::header insert X-Forwarded-Proto "https"'},
-    {'name': 'x_forwarded_for',
-     'rule': 'HTTP::header insert X-Forwarded-For [IP::client_addr]'}
-]
-
 
 def recursive_host_get(inventory, group_name, host_dict=None):
     if host_dict is None:
@@ -481,23 +491,23 @@ def args():
 
     parser.add_argument(
         '--sec-host-network',
-        help='Security host network address and netmask.'
-             ' EXAMPLE: "192.168.1.1/24"',
+        help='Security host network in CIDR format.'
+             ' EXAMPLE: "192.168.1.0/24"',
         required=False,
         default=None
     )
 
     parser.add_argument(
         '--sec-container-network',
-        help='Security container network address and netmask.'
-             ' EXAMPLE: "192.168.1.1/24"',
+        help='Security container network in CIDR format.'
+             ' EXAMPLE: "192.168.2.1/24',
         required=False,
         default=None
     )
 
     parser.add_argument(
         '--sec-public-vlan-name',
-        help='F5 egress VLAN name.'
+        help='Security container network address and netmask.'
              ' EXAMPLE: "FW-LB"',
         required=False,
         default=None
@@ -528,6 +538,16 @@ def args():
         default=os.path.join(
             os.path.expanduser('~/'), 'rpc_f5_config.sh'
         )
+    )
+
+    parser.add_argument(
+        '--afm',
+        help='Pass this argument if the f5 environment is using the Advanced Firewall Module.'
+             'Adding this flag will create the required rules to open up the API to ALL SOURCES.'
+             'It will also create a rule to block communication from the Provider Network to the Host network.',
+        required=False,
+        default=False,
+        action='store_true'
     )
 
     parser.add_argument(
@@ -563,6 +583,7 @@ def main():
     virts = []
     sslvirts = []
     pubvirts = []
+    afmrules = []
 
     commands.extend([
         '### CREATE SECURITY iRULE ###',
@@ -575,11 +596,8 @@ def main():
         '   --> Upload External monitor file to disk <--',
         '       run util bash',
         '       curl -k -o /config/monitors/RPC-MON-EXT-ENDPOINT.monitor https://raw.githubusercontent.com/dpham-rs/rpc-openstack/kilo/scripts/f5-monitor.sh',
-
-
         '       exit',
 
-        '   --> Copy and Paste the External monitor into vi <--',
         '       create sys file external-monitor /' + PART + '/RPC-MON-EXT-ENDPOINT { source-path file:///config/monitors/RPC-MON-EXT-ENDPOINT.monitor }',
         '       save sys config',
         '       create ltm monitor external /' + PART + '/RPC-MON-EXT-ENDPOINT { interval 20 timeout 61 run /' + PART + '/RPC-MON-EXT-ENDPOINT }\n'
@@ -602,6 +620,7 @@ def main():
             'create ltm profile server-ssl /' + PART + '/' + PREFIX_NAME + '_PROF_SSL_SERVER { defaults-from /Common/serverssl }\n'
             % user_args,
         ])
+    
     if user_args['Superman']:
         print "       **************************       "
         print "    .*##*:*####***:::**###*:######*.    "
@@ -754,7 +773,6 @@ def main():
             SEC_HOSTNET_VIRTUAL_ENTRIES % {
                 'sec_host_net': str(hostnet.ip),
                 'sec_host_netmask': str(hostnet.netmask),
-                'sec_host_cidr': str(hostnet.prefixlen),
                 'sec_public_vlan_name': user_args['sec_public_vlan_name']
             }
         )
@@ -765,15 +783,23 @@ def main():
             SEC_CONTAINER_VIRTUAL_ENTRIES % {
                 'sec_container_net': str(containernet.ip),
                 'sec_container_netmask': str(containernet.netmask)
-                'sec_container_cidr': str(containernet.prefixlen)
             }
         )
 
-    # define HTTP request irules for proxy server
-    script.append('\n### CREATE PROXY SERVER REQUEST RULES ###')
-    for irule in HTTP_REQUEST_RULES:
-        script.append(HTTP_REQUEST_IRULE % irule)
-    script.append('\n')
+
+    script.extend(afmrules)
+    if user_args['afm']:
+        if not user_args['ssl_public_ip']:
+            raise SystemExit('Please set the [ --ssl_public_ip ] value')
+        if not user_args['sec_host_network']:
+            raise SystemExit('Please set the [ --sec_host_network ] value')
+        script.append(
+            SEC_AFM_RULES % {
+            'ssl_public_ip': user_args['ssl_public_ip'],
+            'private_ip': lb_vip_address,
+            'sec_host_net': user_args['sec_host_network']
+            }
+        )
 
     script.extend(['%s\n' % i for i in END_COMMANDS])
 
