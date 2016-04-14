@@ -564,7 +564,7 @@ def main():
         '### CREATE EXTERNAL MONITOR ###',
         '   --> Upload External monitor file to disk <--',
         '       run util bash',
-        '       curl -k -o /config/monitors/RPC-MON-EXT-ENDPOINT.monitor https://raw.githubusercontent.com/dpham-rs/rpc-openstack/master/scripts/ext-mon-liberty.sh',
+        '       curl -k -o /config/monitors/RPC-MON-EXT-ENDPOINT.monitor https://raw.githubusercontent.com/dpham-rs/rpc-openstack/master/scripts/f5-monitor-liberty.sh',
         '       exit',
         
         '       create sys file external-monitor /' + PART + '/RPC-MON-EXT-ENDPOINT { source-path file:///config/monitors/RPC-MON-EXT-ENDPOINT.monitor }',
