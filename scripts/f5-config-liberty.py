@@ -745,7 +745,7 @@ def main():
 
     script = [
         '#!/usr/bin/bash\n',
-        r'### F5 Build Script -- Liberty ###",
+        r'### F5 Build Script -- Liberty ###',
         r'### CREATE RPC PARTITION ###',
         'create auth partition %s\n' % PART,
         r'### SET DISPLAY PORT NUMBERS ###',
