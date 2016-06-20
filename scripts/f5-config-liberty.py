@@ -152,7 +152,7 @@ SEC_AFM_RULES = (
     #Port Lists
     'create security firewall port-list RPC_VIP_PORTS '
     '{ ports add { 80 { } 443 { } 3306 { } 5000 { } 6082 { } 8000 { } 8003 { } 8004 { } 8181 { } 8443 '
-    '{ } 8775 { } 8776 { } 8888 { } 9191 { } 9200 { } 9292 { } 9696 { } 35357 { } } }\n'
+    '{ } 8774 { } 8775 { } 8776 { } 8888 { } 9191 { } 9200 { } 9292 { } 9696 { } 35357 { } } }\n'
     '\n'
     #Addr Lists
     'create security firewall address-list RPC_PUB_VIP_ALLOW_IPS { addresses add { 0.0.0.0/0 } }\n'
