@@ -608,12 +608,10 @@ def main():
     if user_args['ssl_domain_name']:
         commands.extend([
             '### UPLOAD SSL CERT KEY PAIR  ###',
-            'cd /RPC',
             'create sys crypto key /' + PART + '/%(ssl_domain_name)s.key'
             % user_args,
             'create sys crypto cert /' + PART + '/%(ssl_domain_name)s.crt key /' % user_args + PART + '/%(ssl_domain_name)s.key common-name %(ssl_domain_name)s lifetime 3650'
             % user_args,
-            'cd /Common\n',
             '### CREATE SSL PROFILES ###',
             ('create ltm profile client-ssl'
             ' /' + PART + '/' + PREFIX_NAME + '_PROF_SSL_%(ssl_domain_name)s'
