@@ -83,6 +83,10 @@ NODES = (
     'create ltm node /' + PART + '/%(node_name)s { address %(container_address)s }'
 )
 
+SNAT_IDLE = (
+    'modify ltm snat-translation /' + PART + '/%s { ip-idle-timeout 3600 }'
+)
+
 PRIORITY_ENTRY = '{ priority-group %(priority_int)s }'
 
 POOL_NODE = {
@@ -620,7 +624,7 @@ def main():
             'create ltm profile server-ssl /' + PART + '/' + PREFIX_NAME + '_PROF_SSL_SERVER { defaults-from /Common/serverssl }\n'
             % user_args,
         ])
-    
+
     if user_args['Superman']:
         print "       **************************       "
         print "    .*##*:*####***:::**###*:######*.    "
@@ -739,6 +743,10 @@ def main():
     snat_pool = '%s\n' % SNAT_POOL % {
         'snat_pool_addresses': snat_pool_addresses
     }
+    snat_translations = []
+    for snat_ip in snat_pool_adds.split(","):
+        snat_translations.append( SNAT_IDLE % snat_ip)
+
 
     script = [
         '#!/usr/bin/bash\n',
@@ -748,8 +756,9 @@ def main():
         'modify cli global-settings service number\n',
         snat_pool
     ]
+    script.extend(['%s' % i for i in snat_translations])
 
-    script.extend(['### CREATE MONITORS ###'])
+    script.extend(['\n### CREATE MONITORS ###'])
     script.extend(['%s' % i % user_args for i in MONITORS])
     script.extend(['%s' % i for i in commands])
     script.extend(['### CREATE PERSISTENCE PROFILES ###'])
