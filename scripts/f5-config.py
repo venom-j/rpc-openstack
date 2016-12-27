@@ -582,7 +582,7 @@ def main():
         inventory_json = json.loads(f.read())
 
     commands = []
-    nodes = []
+    nodes = set()
     pools = []
     virts = []
     sslvirts = []
@@ -599,7 +599,7 @@ def main():
         '### CREATE EXTERNAL MONITOR ###',
         '   --> Upload External monitor file to disk <--',
         '       run util bash',
-        '       curl -k -o /config/monitors/RPC-MON-EXT-ENDPOINT.monitor https://raw.githubusercontent.com/dpham-rs/rpc-openstack/kilo/scripts/f5-monitor.sh',
+        '       curl -k -o /config/monitors/RPC-MON-EXT-ENDPOINT.monitor https://raw.githubusercontent.com/dpham-rs/rpc-openstack/master/scripts/f5-monitor-liberty.sh',
         '       exit',
 
         '       create sys file external-monitor /' + PART + '/RPC-MON-EXT-ENDPOINT { source-path file:///config/monitors/RPC-MON-EXT-ENDPOINT.monitor }',
@@ -661,7 +661,7 @@ def main():
         priority = 100
         for node in value['hosts']:
             node['node_name'] = '%s_NODE_%s' % (PREFIX_NAME, node['hostname'])
-            nodes.append(NODES % node)
+            nodes.add(NODES % node)
             if value.get('persist'):
                 persist = PERSIST_OPTION
             else:
@@ -747,9 +747,9 @@ def main():
     for snat_ip in snat_pool_adds.split(","):
         snat_translations.append( SNAT_IDLE % snat_ip)
 
-
     script = [
         '#!/usr/bin/bash\n',
+        r'### F5 Build Script -- Liberty ###',
         r'### CREATE RPC PARTITION ###',
         'create auth partition %s\n' % PART,
         r'### SET DISPLAY PORT NUMBERS ###',
@@ -764,7 +764,7 @@ def main():
     script.extend(['### CREATE PERSISTENCE PROFILES ###'])
     script.extend(['%s' % i % user_args for i in PERSISTANCE])
     script.extend(['### CREATE NODES ###'])
-    script.extend(['%s' % i % user_args for i in nodes])
+    script.extend(['%s' % i % user_args for i in sorted(nodes)])
     script.extend(['\n### CREATE POOLS ###'])
     script.extend(pools)
     script.extend(['\n### CREATE VIRTUAL SERVERS ###'])
