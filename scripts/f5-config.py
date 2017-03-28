@@ -76,10 +76,10 @@ MONITORS = [
     r'create ltm monitor http /' + PART + '/' + PREFIX_NAME + '_MON_HTTP_REPO {'
     r' defaults-from http destination *:8181 recv "200 OK" send "HEAD /'
     r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }',
-    r'create ltm monitor http ' + PART + PREFIX_NAME + '_MON_HTTP_REPO_CACHE {'
+    r'create ltm monitor http /' + PART + '/' + PREFIX_NAME + '_MON_HTTP_REPO_CACHE {'
     r' defaults-from http destination *:3142 recv "200 OK" send "HEAD /acng-report.html'
     r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }',
-    r'create ltm monitor tcp ' + PART + PREFIX_NAME + '_MON_TCP_REPO_GIT {'
+    r'create ltm monitor tcp /' + PART + '/' + PREFIX_NAME + '_MON_TCP_REPO_GIT {'
     r' defaults-from tcp destination *:9418 }',
     '\n'
 ]
@@ -390,7 +390,7 @@ POOL_PARTS = {
     'repo_cache': {
         'port': 3142,
         'backend_port': 3142,
-        'mon_type': PART + PREFIX_NAME + '_MON_HTTP_REPO_CACHE',
+        'mon_type': '/' + PART + '/' + PREFIX_NAME + '_MON_HTTP_REPO_CACHE',
         'group': 'repo_all',
         'priority': True,
         'hosts': []
@@ -398,14 +398,14 @@ POOL_PARTS = {
     'repo_git': {
         'port': 9418,
         'backend_port': 9418,
-        'mon_type': PART + PREFIX_NAME + '_MON_TCP_REPO_GIT',
+        'mon_type': '/' + PART + '/' + PREFIX_NAME + '_MON_TCP_REPO_GIT',
         'group': 'pkg_repo',
         'hosts': []
     },
     'magnum': {
         'port': 9511,
         'backend_port': 9511,
-        'mon_type': PART + 'RPC-MON-EXT-ENDPOINT',
+        'mon_type': '/' + PART + '/' + 'RPC-MON-EXT-ENDPOINT',
         'group': 'magnum_all',
         'hosts': []
     }
