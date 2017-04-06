@@ -78,6 +78,9 @@ MONITORS = [
     r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }',
     r'create ltm monitor tcp /' + PART + '/' + PREFIX_NAME + '_MON_TCP_REPO_GIT {'
     r' defaults-from tcp destination *:9418 }',
+    r'create ltm monitor http /' + PART + '/' + PREFIX_NAME + '_MON_HTTP_MAGNUM {'
+    r' defaults-from http destination *:9511 recv "200 OK" send "GET /v1/'
+    r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }',
     '\n'
 ]
 
@@ -412,7 +415,7 @@ POOL_PARTS = {
     'magnum': {
         'port': 9511,
         'backend_port': 9511,
-        'mon_type': '/' + PART + '/' + 'RPC-MON-EXT-ENDPOINT',
+        'mon_type': '/' + PART + '/' + 'RPC_MON_HTTP_MAGNUM',
         'group': 'magnum_all',
         'hosts': [],
         'make_public': True,
