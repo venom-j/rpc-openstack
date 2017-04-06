@@ -52,14 +52,11 @@ MONITORS = [
     r' defaults-from http destination *:8775 recv "200 OK" send "HEAD /'
     r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }',
     r'create ltm monitor http /' + PART + '/' + PREFIX_NAME + '_MON_HTTP_HORIZON { defaults-from http'
-    r' destination *:80 recv "302 Found" send "HEAD /auth/login/ HTTP/1.1\r\nHost:'
+    r' destination *:80 recv "200 OK" send "HEAD /auth/login/ HTTP/1.1\r\nHost:'
     r' rpc\r\n\r\n" }',
     r'create ltm monitor http /' + PART + '/' + PREFIX_NAME + '_MON_HTTP_NOVA_SPICE_CONSOLE {'
     r' defaults-from http destination *:6082 recv "200 OK" send "HEAD /spice_auto.html'
     r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }',
-    r'create ltm monitor https /' + PART + '/' + PREFIX_NAME + '_MON_HTTPS_HORIZON_SSL { defaults-from'
-    r' https destination *:443 recv "200 OK" send "HEAD /auth/login/ HTTP/1.1\r\nHost:'
-    r' rpc\r\n\r\n" }',
     r'create ltm monitor https /' + PART + '/' + PREFIX_NAME + '_MON_HTTPS_NOVA_SPICE_CONSOLE {'
     r' defaults-from https destination *:6082 recv "200 OK" send "HEAD /'
     r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }',
@@ -121,8 +118,7 @@ VIRTUAL_ENTRIES = (
     ' ip-protocol tcp mask 255.255.255.255'
     ' pool /' + PART + '/%(pool_name)s'
     r' profiles replace-all-with { /Common/fastL4 { } }'
-    '  %(persist)s'
-    ' source 0.0.0.0/0'
+    ' %(persist)s'
     ' %(mirror_status)s'
     ' source-address-translation { pool /' + PART + '/' + PREFIX_NAME + '_SNATPOOL type snat }'
     ' }'
@@ -131,6 +127,16 @@ VIRTUAL_ENTRIES = (
 PUB_SSL_VIRTUAL_ENTRIES = (
     'create ltm virtual /' + PART + '/%(vs_name)s {'
     ' destination %(ssl_public_ip)s:%(port)s ip-protocol tcp'
+    ' pool /' + PART + '/%(pool_name)s'
+    r' profiles replace-all-with { /Common/tcp { } %(ltm_profiles)s }'
+    ' %(persist)s'
+    ' source-address-translation { pool /' + PART + '/' + PREFIX_NAME + '_SNATPOOL type snat }'
+    ' }'
+)
+
+PRI_SSL_VIRTUAL_ENTRIES = (
+    'create ltm virtual /' + PART + '/%(vs_name)s {'
+    ' destination %(internal_lb_vip_address)s:%(port)s ip-protocol tcp'
     ' pool /' + PART + '/%(pool_name)s'
     r' profiles replace-all-with { /Common/tcp { } %(ltm_profiles)s }'
     ' %(persist)s'
@@ -336,13 +342,14 @@ POOL_PARTS = {
     },
     'horizon_ssl': {
         'port': 443,
-        'backend_port': 443,
-        'mon_type': '/' + PART + '/' + PREFIX_NAME + '_MON_HTTPS_HORIZON_SSL',
+        'backend_port': 80,
+        'mon_type': '/' + PART + '/' + PREFIX_NAME + '_MON_HTTP_HORIZON',
         'group': 'horizon',
         'hosts': [],
         'make_public': True,
+        'ssl_private': True,
         'persist': True,
-        'backend_ssl': True
+        'x-forwarded-proto': True
     },
     'elasticsearch': {
         'port': 9200,
@@ -407,7 +414,8 @@ POOL_PARTS = {
         'backend_port': 9511,
         'mon_type': '/' + PART + '/' + 'RPC-MON-EXT-ENDPOINT',
         'group': 'magnum_all',
-        'hosts': []
+        'hosts': [],
+        'make_public': True,
     }
 }
 
@@ -625,6 +633,7 @@ def main():
     virts = []
     sslvirts = []
     pubvirts = []
+    prisslvirts =[]
     afmrules = []
 
     commands.extend([
@@ -719,16 +728,24 @@ def main():
             }
 
 ##########################################
-            virt = '%s' % VIRTUAL_ENTRIES % virtual_dict
-            if virt not in virts:
-                virts.append(virt)
+            if not value.get('ssl_private'):
+                virt = '%s' % VIRTUAL_ENTRIES % virtual_dict
+                if virt not in virts:
+                    virts.append(virt)
+            if value.get('ssl_private'):
+                virtual_dict['ltm_profiles'] = '/' + PART + '/' + PREFIX_NAME + '_X-FORWARDED-PROTO { } /' + PART + '/' + PREFIX_NAME + '_PROF_SSL_%(ssl_domain_name)s { context clientside }'% user_args
+                'RPC_PRI_SSL', value['group_name']
+                prisslvirt = '%s' % PRI_SSL_VIRTUAL_ENTRIES % virtual_dict
+                if prisslvirt not in prisslvirts:
+                    prisslvirts.append(prisslvirt)
+
             if user_args['ssl_public_ip']:
                 if not value.get('backend_ssl'):
                     virtual_dict['ltm_profiles'] = (
                         '/' + PART + '/' + PREFIX_NAME + '_PROF_SSL_%(ssl_domain_name)s { context clientside }'
                     ) % user_args
                     if value.get ('x-forwarded-proto'):
-                        virtual_dict['ltm_profiles'] = '/' + PART + '/' + PREFIX_NAME + '_X-FORWARDED-PROTO { }/' + PART + '/' + PREFIX_NAME + '_PROF_SSL_%(ssl_domain_name)s { context clientside }'% user_args
+                        virtual_dict['ltm_profiles'] = '/' + PART + '/' + PREFIX_NAME + '_X-FORWARDED-PROTO { } /' + PART + '/' + PREFIX_NAME + '_PROF_SSL_%(ssl_domain_name)s { context clientside }'% user_args
                 else:
                     virtual_dict['ltm_profiles'] = '/' + PART + '/' + PREFIX_NAME + '_PROF_SSL_SERVER { context serverside } /' + PART + '/' + PREFIX_NAME + '_PROF_SSL_%(ssl_domain_name)s { context clientside }'% user_args
                 if value.get('make_public'):
@@ -812,6 +829,7 @@ def main():
     script.extend(pools)
     script.extend(['\n### CREATE VIRTUAL SERVERS ###'])
     script.extend(virts)
+    script.extend(prisslvirts)
     script.extend(['\n### CREATE PUBLIC SSL OFFLOADED VIRTUAL SERVERS ###'])
     script.extend(sslvirts)
     script.extend(['\n### CREATE PUBLIC SSL PASS-THROUGH VIRTUAL SERVERS ###'])
