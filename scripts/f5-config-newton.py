@@ -52,14 +52,11 @@ MONITORS = [
     r' defaults-from http destination *:8775 recv "200 OK" send "HEAD /'
     r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }',
     r'create ltm monitor http /' + PART + '/' + PREFIX_NAME + '_MON_HTTP_HORIZON { defaults-from http'
-    r' destination *:80 recv "302 Found" send "HEAD /auth/login/ HTTP/1.1\r\nHost:'
+    r' destination *:80 recv "200 OK" send "HEAD /auth/login/ HTTP/1.1\r\nHost:'
     r' rpc\r\n\r\n" }',
     r'create ltm monitor http /' + PART + '/' + PREFIX_NAME + '_MON_HTTP_NOVA_SPICE_CONSOLE {'
     r' defaults-from http destination *:6082 recv "200 OK" send "HEAD /spice_auto.html'
     r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }',
-    r'create ltm monitor http /' + PART + '/' + PREFIX_NAME + '_MON_HTTP_HORIZON_443 { defaults-from'
-    r' http destination *:443 recv "200 OK" send "HEAD /auth/login/ HTTP/1.1\r\nHost:'
-    r' rpc\r\n\r\n" }',
     r'create ltm monitor https /' + PART + '/' + PREFIX_NAME + '_MON_HTTPS_NOVA_SPICE_CONSOLE {'
     r' defaults-from https destination *:6082 recv "200 OK" send "HEAD /'
     r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }',
@@ -75,7 +72,15 @@ MONITORS = [
     r' tcp destination *:9200 }',
     r'create ltm monitor http /' + PART + '/' + PREFIX_NAME + '_MON_HTTP_REPO {'
     r' defaults-from http destination *:8181 recv "200 OK" send "HEAD /'
-    r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }'
+    r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }',
+    r'create ltm monitor http /' + PART + '/' + PREFIX_NAME + '_MON_HTTP_REPO_CACHE {'
+    r' defaults-from http destination *:3142 recv "200 OK" send "HEAD /acng-report.html'
+    r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }',
+    r'create ltm monitor tcp /' + PART + '/' + PREFIX_NAME + '_MON_TCP_REPO_GIT {'
+    r' defaults-from tcp destination *:9418 }',
+    r'create ltm monitor http /' + PART + '/' + PREFIX_NAME + '_MON_HTTP_MAGNUM {'
+    r' defaults-from http destination *:9511 recv "200 OK" send "GET /v1/'
+    r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }',
     '\n'
 ]
 
@@ -94,6 +99,7 @@ POOL_NODE = {
                  ' load-balancing-mode least-connections-node members replace-all-with'
                  ' { %(nodes)s }',
     'priority': 'min-active-members 1',
+    'service-reset': 'service-down-action reset slow-ramp-time 0',
     'end': 'monitor %(mon_type)s }'
 }
 
@@ -115,8 +121,8 @@ VIRTUAL_ENTRIES = (
     ' ip-protocol tcp mask 255.255.255.255'
     ' pool /' + PART + '/%(pool_name)s'
     r' profiles replace-all-with { /Common/fastL4 { } }'
-    '  %(persist)s'
-    ' source 0.0.0.0/0'
+    ' %(persist)s'
+    ' %(mirror_status)s'
     ' source-address-translation { pool /' + PART + '/' + PREFIX_NAME + '_SNATPOOL type snat }'
     ' }'
 )
@@ -124,6 +130,16 @@ VIRTUAL_ENTRIES = (
 PUB_SSL_VIRTUAL_ENTRIES = (
     'create ltm virtual /' + PART + '/%(vs_name)s {'
     ' destination %(ssl_public_ip)s:%(port)s ip-protocol tcp'
+    ' pool /' + PART + '/%(pool_name)s'
+    r' profiles replace-all-with { /Common/tcp { } %(ltm_profiles)s }'
+    ' %(persist)s'
+    ' source-address-translation { pool /' + PART + '/' + PREFIX_NAME + '_SNATPOOL type snat }'
+    ' }'
+)
+
+PRI_SSL_VIRTUAL_ENTRIES = (
+    'create ltm virtual /' + PART + '/%(vs_name)s {'
+    ' destination %(internal_lb_vip_address)s:%(port)s ip-protocol tcp'
     ' pool /' + PART + '/%(pool_name)s'
     r' profiles replace-all-with { /Common/tcp { } %(ltm_profiles)s }'
     ' %(persist)s'
@@ -155,8 +171,8 @@ SEC_AFM_RULES = (
     '\n### CREATE AFM LIST AND RULES ###\n'
     #Port Lists
     'create security firewall port-list RPC_VIP_PORTS '
-    '{ ports add { 80 { } 443 { } 3306 { } 3307 { } 5000 { } 6082 { } 8000 { } 8003 { } 8004 { } 8080 { } '
-    '8181 { } 8443 { } 8774 { } 8775 { } 8776 { } 8888 { } 9191 { } 9200 { } 9292 { } 9696 { } 35357 { } } }\n'
+    '{ ports add { 80 { } 443 { } 3306 { } 5000 { } 6082 { } 8000 { } 8003 { } 8004 { } 8080 { } 8181 { } 8443 '
+    '{ } 8774 { } 8775 { } 8776 { } 8888 { } 9191 { } 9200 { } 9292 { } 9696 { } 35357 { } } }\n'
     '\n'
     #Addr Lists
     'create security firewall address-list RPC_PUB_VIP_ALLOW_IPS { addresses add { 0.0.0.0/0 } }\n'
@@ -189,7 +205,7 @@ SEC_AFM_RULES = (
 
 SEC_CONTAINER_VIRTUAL_ENTRIES = (
     'create ltm virtual /' + PART + '/' + PREFIX_NAME + '_LIMIT_ACCESS_TO_CONTAINER_NET {'
-    ' connection-limit 1 destination %(sec_container_net)s:0 ip-forward mask'
+    ' destination %(sec_container_net)s:0 ip-forward mask'
     ' %(sec_container_netmask)s profiles replace-all-with'
     ' { /Common/fastL4 { } } rules { /' + PART + '/' + PREFIX_NAME + '_DISCARD_ALL'
     ' } translate-address disabled translate-port disabled'
@@ -204,6 +220,17 @@ POOL_PARTS = {
         'mon_type': '/' + PART + '/' + PREFIX_NAME + '_MON_GALERA',
         'priority': True,
         'group': 'galera',
+        'service-reset': True,
+        'connection-mirror': True,
+        'hosts': []
+    },
+    'galera_read': {
+        'port': 3307,
+        'backend_port': 3306,
+        'mon_type': '/' + PART + '/' + PREFIX_NAME + '_MON_GALERA',
+        'priority': False,
+        'group': 'galera',
+        'connection-mirror': True,
         'hosts': []
     },
     'glance_api': {
@@ -318,12 +345,14 @@ POOL_PARTS = {
     },
     'horizon_ssl': {
         'port': 443,
-        'backend_port': 443,
-        'mon_type': '/' + PART + '/' + PREFIX_NAME + '_MON_HTTP_HORIZON_443',
+        'backend_port': 80,
+        'mon_type': '/' + PART + '/' + PREFIX_NAME + '_MON_HTTP_HORIZON',
         'group': 'horizon',
         'hosts': [],
         'make_public': True,
-        'persist': True
+        'ssl_private': True,
+        'persist': True,
+        'x-forwarded-proto': True
     },
     'elasticsearch': {
         'port': 9200,
@@ -367,6 +396,29 @@ POOL_PARTS = {
         'group': 'pkg_repo',
         'priority': True,
         'hosts': []
+    },
+    'repo_cache': {
+        'port': 3142,
+        'backend_port': 3142,
+        'mon_type': '/' + PART + '/' + PREFIX_NAME + '_MON_HTTP_REPO_CACHE',
+        'group': 'repo_all',
+        'priority': True,
+        'hosts': []
+    },
+    'repo_git': {
+        'port': 9418,
+        'backend_port': 9418,
+        'mon_type': '/' + PART + '/' + PREFIX_NAME + '_MON_TCP_REPO_GIT',
+        'group': 'pkg_repo',
+        'hosts': []
+    },
+    'magnum': {
+        'port': 9511,
+        'backend_port': 9511,
+        'mon_type': '/' + PART + '/' + 'RPC_MON_HTTP_MAGNUM',
+        'group': 'magnum_all',
+        'hosts': [],
+        'make_public': True,
     }
 }
 
@@ -566,9 +618,7 @@ def args():
         action='store_true'
     )
 
-
     return vars(parser.parse_args())
-
 
 def main():
     """Run the main application."""
@@ -586,6 +636,7 @@ def main():
     virts = []
     sslvirts = []
     pubvirts = []
+    prisslvirts =[]
     afmrules = []
 
     commands.extend([
@@ -598,7 +649,7 @@ def main():
         '### CREATE EXTERNAL MONITOR ###',
         '   --> Upload External monitor file to disk <--',
         '       run util bash',
-        '       curl -k -o /config/monitors/RPC-MON-EXT-ENDPOINT.monitor https://raw.githubusercontent.com/dpham-rs/rpc-openstack/master/scripts/f5-monitor.sh',
+        '       curl -k -o /config/monitors/RPC-MON-EXT-ENDPOINT.monitor https://raw.githubusercontent.com/dpham-rs/rpc-openstack/master/scripts/f5-monitor-liberty.sh',
         '       exit',
 
         '       create sys file external-monitor /' + PART + '/RPC-MON-EXT-ENDPOINT { source-path file:///config/monitors/RPC-MON-EXT-ENDPOINT.monitor }',
@@ -608,12 +659,10 @@ def main():
     if user_args['ssl_domain_name']:
         commands.extend([
             '### UPLOAD SSL CERT KEY PAIR  ###',
-            'cd /RPC',
             'create sys crypto key /' + PART + '/%(ssl_domain_name)s.key'
             % user_args,
             'create sys crypto cert /' + PART + '/%(ssl_domain_name)s.crt key /' % user_args + PART + '/%(ssl_domain_name)s.key common-name %(ssl_domain_name)s lifetime 3650'
             % user_args,
-            'cd /Common\n',
             '### CREATE SSL PROFILES ###',
             ('create ltm profile client-ssl'
             ' /' + PART + '/' + PREFIX_NAME + '_PROF_SSL_%(ssl_domain_name)s'
@@ -665,9 +714,14 @@ def main():
                 persist = PERSIST_OPTION
             else:
                 persist = str()
+            if value.get('connection-mirror'):
+                mirror_state = 'mirror enabled'
+            else:
+                mirror_state = str()
 
             virtual_dict = {
                 'port': value['port'],
+                'mirror_status': mirror_state,
                 'vs_name': value['vs_name'],
                 'pool_name': value['pool_name'],
                 'internal_lb_vip_address': lb_vip_address,
@@ -675,17 +729,26 @@ def main():
                 'ssl_domain_name': user_args['ssl_domain_name'],
                 'ssl_public_ip': user_args['ssl_public_ip'],
             }
+
 ##########################################
-            virt = '%s' % VIRTUAL_ENTRIES % virtual_dict
-            if virt not in virts:
-                virts.append(virt)
+            if not value.get('ssl_private'):
+                virt = '%s' % VIRTUAL_ENTRIES % virtual_dict
+                if virt not in virts:
+                    virts.append(virt)
+            if value.get('ssl_private'):
+                virtual_dict['ltm_profiles'] = '/' + PART + '/' + PREFIX_NAME + '_X-FORWARDED-PROTO { } /' + PART + '/' + PREFIX_NAME + '_PROF_SSL_%(ssl_domain_name)s { context clientside }'% user_args
+                'RPC_PRI_SSL', value['group_name']
+                prisslvirt = '%s' % PRI_SSL_VIRTUAL_ENTRIES % virtual_dict
+                if prisslvirt not in prisslvirts:
+                    prisslvirts.append(prisslvirt)
+
             if user_args['ssl_public_ip']:
                 if not value.get('backend_ssl'):
                     virtual_dict['ltm_profiles'] = (
                         '/' + PART + '/' + PREFIX_NAME + '_PROF_SSL_%(ssl_domain_name)s { context clientside }'
                     ) % user_args
                     if value.get ('x-forwarded-proto'):
-                        virtual_dict['ltm_profiles'] = '/' + PART + '/' + PREFIX_NAME + '_X-FORWARDED-PROTO { }/' + PART + '/' + PREFIX_NAME + '_PROF_SSL_%(ssl_domain_name)s { context clientside }'% user_args
+                        virtual_dict['ltm_profiles'] = '/' + PART + '/' + PREFIX_NAME + '_X-FORWARDED-PROTO { } /' + PART + '/' + PREFIX_NAME + '_PROF_SSL_%(ssl_domain_name)s { context clientside }'% user_args
                 else:
                     virtual_dict['ltm_profiles'] = '/' + PART + '/' + PREFIX_NAME + '_PROF_SSL_SERVER { context serverside } /' + PART + '/' + PREFIX_NAME + '_PROF_SSL_%(ssl_domain_name)s { context clientside }'% user_args
                 if value.get('make_public'):
@@ -727,7 +790,8 @@ def main():
         pool_node = [POOL_NODE['beginning'] % value]
         if value.get('priority') is True:
             pool_node.append(POOL_NODE['priority'])
-
+        if value.get('service-reset') is True:
+            pool_node.append(POOL_NODE['service-reset'])
         pool_node.append(POOL_NODE['end'] % value)
         pools.append('%s' % ' '.join(pool_node))
 
@@ -746,9 +810,9 @@ def main():
     for snat_ip in snat_pool_adds.split(","):
         snat_translations.append( SNAT_IDLE % snat_ip)
 
+
     script = [
         '#!/usr/bin/bash\n',
-        r'### F5 Build Script -- Newton ###',
         r'### CREATE RPC PARTITION ###',
         'create auth partition %s\n' % PART,
         r'### SET DISPLAY PORT NUMBERS ###',
@@ -763,11 +827,12 @@ def main():
     script.extend(['### CREATE PERSISTENCE PROFILES ###'])
     script.extend(['%s' % i % user_args for i in PERSISTANCE])
     script.extend(['### CREATE NODES ###'])
-    script.extend(['%s' % i % user_args for i in sorted(nodes)])
+    script.extend(['%s' % i % user_args for i in nodes])
     script.extend(['\n### CREATE POOLS ###'])
     script.extend(pools)
     script.extend(['\n### CREATE VIRTUAL SERVERS ###'])
     script.extend(virts)
+    script.extend(prisslvirts)
     script.extend(['\n### CREATE PUBLIC SSL OFFLOADED VIRTUAL SERVERS ###'])
     script.extend(sslvirts)
     script.extend(['\n### CREATE PUBLIC SSL PASS-THROUGH VIRTUAL SERVERS ###'])
