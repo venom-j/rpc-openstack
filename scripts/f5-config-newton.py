@@ -60,6 +60,9 @@ MONITORS = [
     r'create ltm monitor https /' + PART + '/' + PREFIX_NAME + '_MON_HTTPS_NOVA_SPICE_CONSOLE {'
     r' defaults-from https destination *:6082 recv "200 OK" send "HEAD /'
     r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }',
+    r'create ltm monitor http ' + PART + PREFIX_NAME + '_MON_HTTP_NOVA_NOVNC_CONSOLE {'
+    r' defaults-from http destination *:6080 recv "200 OK" send "HEAD /vnc_auto.html'
+    r' HTTP/1.1\r\nHost: rpc\r\n\r\n" }',
     r'create ltm monitor tcp /' + PART + '/' + PREFIX_NAME + '_MON_TCP_HEAT_API_CFN { defaults-from tcp'
     r' destination *:8000 }',
     r'create ltm monitor tcp /' + PART + '/' + PREFIX_NAME + '_MON_TCP_HEAT_API_CLOUDWATCH {'
@@ -324,6 +327,15 @@ POOL_PARTS = {
         'group': 'nova_console',
         'hosts': [],
         'ssl_impossible': True,
+        'make_public': True,
+        'persist': True
+    },
+    'nova_novnc_console': {
+        'port': 6080,
+        'backend_port': 6080,
+        'mon_type': PART + PREFIX_NAME + '_MON_HTTP_NOVA_NOVNC_CONSOLE',
+        'group': 'nova_console',
+        'hosts': [],
         'make_public': True,
         'persist': True
     },
