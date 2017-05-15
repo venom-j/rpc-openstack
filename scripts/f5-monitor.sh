@@ -78,6 +78,12 @@ get_token() {
       check_port=$2
       expected_statuses="200"
 
+      # Sometimes the F5 sends the requests as an IPv6 request as the host-header
+      # Chop off the IPv6 leading ::ffff: bits so that the node doesn't barf status 400.
+      if [[ $check_ip == :* ]] ; then
+        check_ip=${check_ip:7}
+      fi
+
       # Build check url by port
       case $check_port in
           5000)
